@@ -19,6 +19,6 @@ deactivate
 ### Updating environment dependencies:
 
 ```bash
-pip freeze > requirements.txt
+pip3 freeze > requirements.txt
 
 ```
