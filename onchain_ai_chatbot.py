@@ -37,8 +37,6 @@ def initialize_agent():
     # Initialize LLM.
     llm = ChatOpenAI(model="gpt-4o-mini")
 
-
-  
     # Configure a file to persist the agent's CDP MPC Wallet Data.
     AI_AGENT_WALLET_ADDRESS = os.getenv("AI_AGENT_WALLET_ADDRESS")
     AI_AGENT_PRIVATE_KEY = os.getenv("AI_AGENT_PRIVATE_KEY")
