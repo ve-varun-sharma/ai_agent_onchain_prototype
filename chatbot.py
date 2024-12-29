@@ -1,35 +1,47 @@
 import os
 import sys
 import time
-from xml.dom import ValidationErr
-from dotenv import load_dotenv
-
-load_dotenv()
-
+import json
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
-
 # Import CDP Agentkit Langchain Extension.
 from cdp_langchain.agent_toolkits import CdpToolkit
 from cdp_langchain.utils import CdpAgentkitWrapper
-from pydantic import BaseModel
-from typing import Dict
-import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
-class CdpAgentkitWrapper(BaseModel):
-    cdp_wallet_data: str
 
-    def export_wallet(self) -> str:
-        # Convert the wallet data JSON string back to a dictionary
-        wallet_data_dict = json.loads(self.cdp_wallet_data)
-        # Convert the wallet data dictionary to a string format
-        wallet_data_str = "\n".join(
-            f"{key}: {value}" for key, value in wallet_data_dict.items()
-        )
-        return wallet_data_str
+def create_wallet(): 
+    # Configure a file to persist the agent's CDP MPC Wallet Data.
+    AI_AGENT_WALLET_ADDRESS = os.getenv("AI_AGENT_WALLET_ADDRESS")
+    AI_AGENT_PRIVATE_KEY = os.getenv("AI_AGENT_PRIVATE_KEY")
+    AI_AGENT_WALLET_ID = os.getenv("AI_AGENT_WALLET_ID")
+    AI_AGENT_SEED = os.getenv("AI_AGENT_SEED")
+
+    # Ensure environment variables are set
+    if not AI_AGENT_WALLET_ADDRESS or not AI_AGENT_PRIVATE_KEY or not AI_AGENT_WALLET_ID or not AI_AGENT_SEED:
+        raise ValueError("AI_AGENT_WALLET_ADDRESS, AI_AGENT_PRIVATE_KEY, AI_AGENT_WALLET_ID, and AI_AGENT_SEED must be set.")
+    
+    wallet_data = {
+        "wallet_id": AI_AGENT_WALLET_ID,
+        "seed": AI_AGENT_SEED,
+        "address1": AI_AGENT_WALLET_ADDRESS,
+        "private_key1": AI_AGENT_PRIVATE_KEY
+    }
+
+     # Serialize the wallet_data dictionary to a JSON string
+    wallet_data_str = json.dumps(wallet_data)
+    # Return a dictionary with the JSON string
+
+    wallet_values = {"cdp_wallet_data": wallet_data_str}
+    return wallet_values 
+
+
+    
 
 
 def initialize_agent():
@@ -37,58 +49,18 @@ def initialize_agent():
     # Initialize LLM.
     llm = ChatOpenAI(model="gpt-4o-mini")
 
+    wallet_values = create_wallet()
+    print(wallet_values)
 
-  
-    # Configure a file to persist the agent's CDP MPC Wallet Data.
-    AI_AGENT_WALLET_ADDRESS = os.getenv("AI_AGENT_WALLET_ADDRESS")
-    AI_AGENT_PRIVATE_KEY = os.getenv("AI_AGENT_PRIVATE_KEY")
+    # Initialize CdpAgentkitWrapper with the wallet values
 
-    # Ensure environment variables are set
-    if not AI_AGENT_WALLET_ADDRESS or not AI_AGENT_PRIVATE_KEY:
-        raise ValueError("AI_AGENT_WALLET_ADDRESS and AI_AGENT_PRIVATE_KEY must be set.")
-    
-
-    
-    wallet_data = {
-        "address1": AI_AGENT_WALLET_ADDRESS,
-        "private_key1": AI_AGENT_PRIVATE_KEY,
-    }
-
-
-    # Serialize the wallet_data dictionary to a JSON string
-    wallet_data_str = json.dumps(wallet_data)
-    
-   
-    
-    # Continue with the rest of your initialization...
-    # For example:
-    # agent_executor = SomeAgentExecutor(llm=llm, agentkit=agentkit)
-    # config = SomeConfig()
-
-    # If there is a persisted agentic wallet, load it and pass to the CDP Agentkit Wrapper.
-    values = {"cdp_wallet_data": wallet_data}
-
-    # Configure CDP Agentkit Langchain Extension.
-    try:
-        agentkit = CdpAgentkitWrapper(cdp_wallet_data=wallet_data_str)
-    # agentkit = CdpAgentkitWrapper(**values)
-    # Initialize the CdpAgentkitWrapper with the JSON string
-    except ValidationErr as e:
-        print(e)
-        return None, None
+    agentkit = CdpAgentkitWrapper(**wallet_values)
 
     # persist the agent's CDP MPC Wallet Data.
-
     wallet_data = agentkit.export_wallet()
 
-    # wallet_data = agentkit.export_wallet()
-    # with open(wallet_data_file, "w") as f:
-    #     f.write(wallet_data)
-
     # Initialize CDP Agentkit Toolkit and get tools.
-
     cdp_toolkit = CdpToolkit.from_cdp_agentkit_wrapper(agentkit)
-
     tools = cdp_toolkit.get_tools()
 
     # Store buffered conversation history in memory.
@@ -96,25 +68,23 @@ def initialize_agent():
     config = {"configurable": {"thread_id": "CDP Agentkit Chatbot Example!"}}
 
     # Create ReAct Agent using the LLM and CDP Agentkit tools.
-    return (
-        create_react_agent(
-            llm,
-            tools=tools,
-            checkpointer=memory,
-            state_modifier=(
-                "You are a helpful agent that can interact onchain using the Coinbase Developer Platform AgentKit. "
-                "You are empowered to interact onchain using your tools. If you ever need funds, you can request "
-                "them from the faucet if you are on network ID 'base-sepolia'. If not, you can provide your wallet "
-                "details and request funds from the user. Before executing your first action, get the wallet details "
-                "to see what network you're on. If there is a 5XX (internal) HTTP error code, ask the user to try "
-                "again later. If someone asks you to do something you can't do with your currently available tools, "
-                "you must say so, and encourage them to implement it themselves using the CDP SDK + Agentkit, "
-                "recommend they go to docs.cdp.coinbase.com for more information. Be concise and helpful with your "
-                "responses. Refrain from restating your tools' descriptions unless it is explicitly requested."
-            ),
+    return create_react_agent(
+        llm,
+        tools=tools,
+        checkpointer=memory,
+        state_modifier=(
+            "You are a helpful agent that can interact onchain using the Coinbase Developer Platform AgentKit. "
+            "You are empowered to interact onchain using your tools. If you ever need funds, you can request "
+            "them from the faucet if you are on network ID 'base-sepolia'. If not, you can provide your wallet "
+            "details and request funds from the user. Before executing your first action, get the wallet details "
+            "to see what network you're on. If there is a 5XX (internal) HTTP error code, ask the user to try "
+            "again later. If someone asks you to do something you can't do with your currently available tools, "
+            "you must say so, and encourage them to implement it themselves using the CDP SDK + Agentkit, "
+            "recommend they go to docs.cdp.coinbase.com for more information. Be concise and helpful with your "
+            "responses. Refrain from restating your tools' descriptions unless it is explicitly requested."
         ),
-        config,
-    )
+
+    ), config
 
 
 # Autonomous Mode
